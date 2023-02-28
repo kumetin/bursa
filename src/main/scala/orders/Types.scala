@@ -34,4 +34,7 @@ object Types {
   case object Listed extends OrderState
   case object Canceled extends OrderState
   case object Executed extends OrderState
+
+  sealed trait OrderEvent
+  case class OrderStateChangeEvent(id: OrderId, oldState: OrderState, newState: OrderState, at: Long) extends OrderEvent
 }
