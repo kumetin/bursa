@@ -1,10 +1,11 @@
 package org.challange.bursa
 
 import assets.Assets
-
-import org.challange.bursa.assets.Types.{Asset, AssetId}
-import org.challange.bursa.orders.{Orders, Types}
-import org.challange.bursa.orders.Types.{Buy, ExistingLimitOrder, ExistingOrder, NewLimitOrder, OrderEvent, OrderId}
+import assets.Types.{Asset, AssetId}
+import events.Types.BursaEvent
+import orders.Orders
+import orders.Types._
+import trades.Types.TradeEvent
 
 object Main {
 
@@ -24,22 +25,44 @@ object Main {
     val ordersMgr = Orders()
 
     // Here we create a listener which simply logs the events it intercepts
-    def loggingEventListener(event: OrderEvent): Unit = {
+    // This covers 'Support receiving updates on the state of an order through push notifications.'
+    def orderEventListener(event: BursaEvent): Unit = {
       event match {
-        case Types.OrderStateChangeEvent(id, oldState, newState, at) =>
-          println(s"\tEventListener: Order '$id' status changed from '$oldState' to '$newState' at $at")
+        case OrderStateChangeEvent(id, oldState, newState, ts) =>
+          println(s"\tEventListener: Order '$id' status changed from '$oldState' to '$newState' at $ts")
+      }
+    }
+
+    // Here we create a listener which simply logs the events it intercepts
+    // This covers 'Support receiving updates on executed trades, including the asset, quantity, price, and time of
+    // the trade.'
+    def tradeEventListener(event: BursaEvent): Unit = {
+      event match {
+        case TradeEvent(assetId, quantity, price, ts) =>
+          println(s"\tEventListener: Asset '$assetId' traded ; $quantity units for $price per unit, at $ts")
       }
     }
 
     // Here we create a new limit order, subscribing our listener for events on that order
     val existingGoogleBuyLimitOrder: ExistingLimitOrder =
-      sendLimitOrder(ordersMgr, NewLimitOrder("GOOG", Buy, 50, 100), loggingEventListener)
+      sendLimitOrder(ordersMgr, NewLimitOrder("GOOG", Buy, 100, 50), orderEventListener)
+
+    ordersMgr.registerListener(tradeEventListener)
 
     val canceledOrder: ExistingOrder =
       cancelOrder(ordersMgr, existingGoogleBuyLimitOrder.id).getOrElse(throw new RuntimeException("BUG BUG BUG"))
 
     val maybeOrder: Option[ExistingOrder] =
       getOrder(ordersMgr, canceledOrder.id)
+
+    sendLimitOrder(ordersMgr, NewLimitOrder("GOOG", Buy, 95, 100), orderEventListener)
+    sendLimitOrder(ordersMgr, NewLimitOrder("GOOG", Sell, 105, 200), orderEventListener)
+    sendLimitOrder(ordersMgr, NewLimitOrder("GOOG", Sell, 110, 50), orderEventListener)
+    showSupplyDemand(ordersMgr, "GOOG")
+    sendLimitOrder(ordersMgr, NewLimitOrder("GOOG", Buy, 98, 75), orderEventListener)
+    sendLimitOrder(ordersMgr, NewLimitOrder("GOOG", Sell, 97, 100), orderEventListener)
+    showSupplyDemand(ordersMgr, "GOOG")
+
   }
 
   private def showAssets(assets: Seq[Asset]): Unit = {
@@ -61,7 +84,8 @@ object Main {
   }
 
   private def sendLimitOrder(orders: Orders, newOrder: NewLimitOrder,
-                             listener: OrderEvent => Unit = _ => ()): ExistingLimitOrder = {
+                             listener: BursaEvent => Unit = _ => ()): ExistingLimitOrder = {
+    println(s"> Limit Order : Creating order $newOrder")
     val order: ExistingLimitOrder = orders.createLimitOrder(newOrder, listener)
     println(s"> Limit Order : '${order.id}' ${order.stateString}")
     order
@@ -85,4 +109,16 @@ object Main {
     }
     result
   }
+
+  def showSupplyDemand(ordersMgr: Orders, assetId: AssetId): Unit = {
+    val supplyDemand = ordersMgr.getAssetSupplyDemand(assetId)
+    println(s"> Show Supply & Demand for '$assetId'")
+    supplyDemand.demandByPrice.foreach{ case (price, quantity) =>
+      println(s"\tThere are $quantity shares available for purchase at $price per share")
+    }
+    supplyDemand.supplyByPrice.foreach { case (price, quantity) =>
+      println(s"\tThere are $quantity shares available for sell at $price per share")
+    }
+  }
+
 }
