@@ -2,5 +2,7 @@ package org.challange.bursa
 package assets
 
 object Types {
-  case class Asset(id: String, displayName: String)
+  type AssetId = String
+
+  case class Asset(id: AssetId, displayName: String)
 }
